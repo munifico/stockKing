@@ -218,6 +218,7 @@ class Cp6033:
                 #item['평가손익'] = self.objRq.GetDataValue(11, i)  # 평가손익(천원미만은 절사 됨)
                 # 매입금액 = 장부가 * 잔고수량
                 item['매입금액'] = item['장부가'] * item['잔고수량']
+                item['수익률'] = self.objRq.GetDataValue(11, i)
                 item['현재가'] = 0
                 item['대비'] = 0
                 item['거래량'] = 0
@@ -313,7 +314,32 @@ class CpMarketEye:
  
         return True
  
- 
+class CpTrade:
+    def Request(self, codes):
+        # 주문 관련 초기화
+        if (g_objCpTrade.TradeInit(0) != 0):
+            print("주문 초기화 실패")
+            return False
+        # 계좌번호 조회
+        acc = g_objCpTrade.AccountNumber[0]  # 계좌번호
+        accFlag = g_objCpTrade.GoodsList(acc, 1)  # 주식상품 구분
+        print(acc, accFlag[0])
+        #print('**** 코드: ',codes)
+        objStockOrder = win32com.client.Dispatch("CpTrade.CpTd0311")
+        ##당일 상위 종목 50개 받아와서 매수
+        ## 현재가가 5만원 이하이때만 현재가로 10주 매수        
+        for i in codes:
+            print('띠용: ',i,' ',codes[i],' ',codes[i]['장부가'])
+            objStockOrder.SetInputValue(0, '1')   # 2: 매도
+            objStockOrder.SetInputValue(1, acc )   #  계좌번호
+            objStockOrder.SetInputValue(2, accFlag[0])   # 상품구분 - 주식 상품 중 첫번째
+            objStockOrder.SetInputValue(3, i)   # 종목코드 - A003540 - 대신증권 종목
+            objStockOrder.SetInputValue(4, 10)   # 매수수량 10주
+            objStockOrder.SetInputValue(5, codes[i]['장부가'] * 0.91 )   # 주문단가  - 14,100원
+            objStockOrder.SetInputValue(7, "0")   # 주문 조건 구분 코드, 0: 기본 1: IOC 2:FOK
+            objStockOrder.SetInputValue(8, "01")   # 주문호가 구분코드 - 01: 보통
+            objStockOrder.BlockRequest()
+
 ################################################
 # 테스트를 위한 메인 화면
 class MyWindow(QMainWindow):
@@ -397,7 +423,8 @@ class MyWindow(QMainWindow):
             self.objCur[code] = CpPBStockCur()
             self.objCur[code].Subscribe(code, self)
         self.isSB = True
- 
+        objTrade = CpTrade()
+        objTrade.Request(self.jangoData)
         # 실시간 주문 체결 요청
         self.objConclusion.Subscribe('', self)
  

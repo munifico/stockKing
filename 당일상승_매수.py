@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import *
 import win32com.client
- 
+import ctypes
 # 설명: 당일 상승률 상위 200 종목을 가져와 현재가  실시간 조회하는 샘플
 # CpEvent: 실시간 현재가 수신 클래스
 # CpStockCur : 현재가 실시간 통신 클래스
@@ -12,6 +12,30 @@ import win32com.client
 
 ## 전역 OBJECT
 objCpTrade = win32com.client.Dispatch('CpTrade.CpTdUtil')
+g_objCpStatus = win32com.client.Dispatch('CpUtil.CpCybos')
+# PLUS 실행 기본 체크 함수
+def InitPlusCheck():
+    # 프로세스가 관리자 권한으로 실행 여부
+    if ctypes.windll.shell32.IsUserAnAdmin():
+        print('정상: 관리자권한으로 실행된 프로세스입니다.')
+    else:
+        print('오류: 일반권한으로 실행됨. 관리자 권한으로 실행해 주세요')
+        return False
+ 
+    # 연결 여부 체크
+    if (g_objCpStatus.IsConnect == 0):
+        print("PLUS가 정상적으로 연결되지 않음. ")
+        return False
+ 
+    # 주문 관련 초기화
+    if (objCpTrade.TradeInit(0) != 0):
+        print("주문 초기화 실패")
+        return False
+ 
+    return True
+ 
+ 
+
 
 class CpEvent:
     def set_params(self, client,caller):
@@ -29,21 +53,9 @@ class CpEvent:
         diff = self.client.GetHeaderValue(2)  # 대비
         cVol = self.client.GetHeaderValue(17)  # 순간체결수량
         vol = self.client.GetHeaderValue(9)  # 거래량
-        print('*****************  ',self.caller.jangoData)
         item['현재가'] = cprice
         item['종목코드'] = code
         codes[code] = item
-        objTrade = CpTrade()
-        
-        if(self.caller.jangoData[code]['매입금액'] <= cprice* 0.03):
-            # 현재가랑 종목 코드 필요
-            # 3% 올랐을때 매도
-            objTrade.Request(codes,"1")
-        if(self.caller.jangoData[code]['매입금액'] >= cprice* 0.03):
-            # 현재가랑 종목 코드 필요
-            # 3% 떨어졌을때 매도 
-            # 내일 다시 수정 필요!
-            objTrade.Request(codes,"1")            
         if (exFlag == ord('1')):  # 동시호가 시간 (예상체결)
             print("실시간(예상체결)", name, timess, "*", cprice, "대비", diff, "체결량", cVol, "거래량", vol)
         elif (exFlag == ord('2')):  # 장중(체결)
@@ -90,17 +102,17 @@ class Cp7043:
         cnt = self.objRq.GetHeaderValue(0)
         cntTotal  = self.objRq.GetHeaderValue(1)
         print(cnt, cntTotal)
-        retcode.append('A372290')
-        # for i in range(cnt):
-        #     code = self.objRq.GetDataValue(0, i)  # 코드
-        #     retcode.append(code)
-        #     if len(retcode) >  10:       # 최대 200 종목만,
-        #         break
-        #     name = self.objRq.GetDataValue(1, i)  # 종목명
-        #     diffflag = self.objRq.GetDataValue(3, i)
-        #     diff = self.objRq.GetDataValue(4, i)
-        #     vol = self.objRq.GetDataValue(6, i)  # 거래량
-        #     print(code, name, diffflag, diff, vol)
+        #retcode.append('A372290')
+        for i in range(cnt):
+            code = self.objRq.GetDataValue(0, i)  # 코드
+            retcode.append(code)
+            if len(retcode) >  10:       # 최대 200 종목만,
+                break
+            name = self.objRq.GetDataValue(1, i)  # 종목명
+            diffflag = self.objRq.GetDataValue(3, i)
+            diff = self.objRq.GetDataValue(4, i)
+            vol = self.objRq.GetDataValue(6, i)  # 거래량
+            print(code, name, diffflag, diff, vol)
  
     def Request(self, retCode):
         self.rq7043(retCode)
@@ -141,7 +153,7 @@ class CpMarketEye:
         # 현재가 통신 및 통신 에러 처리
         rqStatus = objRq.GetDibStatus()
         rqRet = objRq.GetDibMsg1()
-        print("통신상태", rqStatus, rqRet)
+        print("CpMarketEye 통신상태", rqStatus, rqRet)
         if rqStatus != 0:
             return False
  
@@ -169,9 +181,6 @@ class CpMarketEye:
         return True
 class CpTrade:
     def Request(self, codes,flag):
-        
-        
-        objCpTrade.TradeInit()
         # 주문 관련 초기화
         if (objCpTrade.TradeInit(0) != 0):
             print("주문 초기화 실패")
@@ -225,12 +234,12 @@ class Cp6033:
             # 통신 및 통신 에러 처리
             rqStatus = self.objRq.GetDibStatus()
             rqRet = self.objRq.GetDibMsg1()
-            print("통신상태", rqStatus, rqRet)
+            print("Cp6033 통신상태", rqStatus, rqRet)
             if rqStatus != 0:
                 return False
  
             cnt = self.objRq.GetHeaderValue(7)
-            print(cnt)
+            print('아아아아: ',cnt)
  
  
             for i in range(cnt):
@@ -238,8 +247,8 @@ class Cp6033:
                 code = self.objRq.GetDataValue(12, i)  # 종목코드
                 item['종목코드'] = code
                 item['종목명'] = self.objRq.GetDataValue(0, i)  # 종목명
-                item['현금신용'] = self.dicflag1[self.objRq.GetDataValue(1,i)] # 신용구분
-                print(code, '현금신용', item['현금신용'])
+                # item['현금신용'] = self.dicflag1[self.objRq.GetDataValue(1,i)] # 신용구분
+                # print(code, '현금신용', item['현금신용'])
                 item['대출일'] = self.objRq.GetDataValue(2, i)  # 대출일
                 item['잔고수량'] = self.objRq.GetDataValue(7, i)  # 체결잔고수량
                 item['매도가능'] = self.objRq.GetDataValue(15, i)
@@ -257,10 +266,10 @@ class Cp6033:
                 key = code
                 caller.jangoData[key] = item
  
-                if len(caller.jangoData) >= 200:  # 최대 200 종목만,
+                if len(caller.jangoData) >= 10:  # 최대 200 종목만,
                     break
  
-            if len(caller.jangoData) >= 200:
+            if len(caller.jangoData) >= 10:
                 break
             if (self.objRq.Continue == False):
                 break
@@ -270,6 +279,11 @@ class MyWindow(QMainWindow):
  
     def __init__(self):
         super().__init__()
+
+        # plus 상태 체크
+        if InitPlusCheck() == False:
+            exit()
+
         self.setWindowTitle("PLUS API TEST")
         self.setGeometry(300, 300, 300, 180)
         self.isSB = False
@@ -313,9 +327,9 @@ class MyWindow(QMainWindow):
         if (objMarkeyeye.Request(codes, rqField,codeItem) == False):
             exit()
         #매수코드
-        # objTrade = CpTrade()
-        # objTrade.Request(codeItem,"2")
-
+        objTrade = CpTrade()
+        objTrade.Request(codeItem,"2")
+        
         cnt = len(codes)
         for i in range(cnt):
             self.objCur.append(CpStockCur())

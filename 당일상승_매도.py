@@ -2,15 +2,17 @@ import sys
 from PyQt5.QtWidgets import *
 import win32com.client
 import ctypes
+# 설명: 당일 상승률 상위 200 종목을 가져와 현재가  실시간 조회하는 샘플
+# CpEvent: 실시간 현재가 수신 클래스
+# CpStockCur : 현재가 실시간 통신 클래스
+# Cp7043 : 상승률 상위 종목 통신 서비스 - 연속 조회를 통해 200 종목 가져옴
+# CpMarketEye: 복수 종목 조회 서비스 - 200 종목 현재가를 조회 함.
  
-################################################
-# PLUS 공통 OBJECT
-g_objCodeMgr = win32com.client.Dispatch('CpUtil.CpCodeMgr')
+# CpEvent: 실시간 이벤트 수신 클래스
+
+## 전역 OBJECT
+objCpTrade = win32com.client.Dispatch('CpTrade.CpTdUtil')
 g_objCpStatus = win32com.client.Dispatch('CpUtil.CpCybos')
-g_objCpTrade = win32com.client.Dispatch('CpTrade.CpTdUtil')
- 
- 
-################################################
 # PLUS 실행 기본 체크 함수
 def InitPlusCheck():
     # 프로세스가 관리자 권한으로 실행 여부
@@ -26,36 +28,19 @@ def InitPlusCheck():
         return False
  
     # 주문 관련 초기화
-    if (g_objCpTrade.TradeInit(0) != 0):
+    if (objCpTrade.TradeInit(0) != 0):
         print("주문 초기화 실패")
         return False
  
     return True
  
- 
-################################################
-# CpEvent: 실시간 이벤트 수신 클래스
 class CpEvent:
-    def set_params(self, client, name, caller):
-        self.client = client  # CP 실시간 통신 object
-        self.name = name  # 서비스가 다른 이벤트를 구분하기 위한 이름
-        self.caller = caller  # callback 을 위해 보관
- 
-        # 구분값 : 텍스트로 변경하기 위해 딕셔너리 이용
-        self.dicflag12 = {'1': '매도', '2': '매수'}
-        self.dicflag14 = {'1': '체결', '2': '확인', '3': '거부', '4':'접수'}
-        self.dicflag15 = {'00': '현금', '01': '유통융자', '02': '자기융자', '03': '유통대주',
-                          '04':'자기대주', '05':'주식담보대출', '07':'채권담보대출',
-                          '06':'매입담보대출', '08':'플러스론',
-                          '13':'자기대용융자', '15':'유통대용융자'}
-        self.dicflag16 = {'1': '정상주문', '2': '정정주문', '3': '취소주문'}
-        self.dicflag17 = {'1': '현금', '2': '신용', '3': '선물대용', '4': '공매도'}
-        self.dicflag18 = {'01': '보통', '02': '임의', '03':'시장가', '05': '조건부지정가'}
-        self.dicflag19 = {'0': '없음', '1': 'IOC', '2': 'FOK'}
- 
+    def set_params(self, client,name,caller):
+        self.client = client
+        self.name = name
+        self.caller = caller
  
     def OnReceived(self):
-        # 실시간 처리 - 현재가 주문 체결
         if self.name == 'stockcur':
             code = self.client.GetHeaderValue(0)  # 초
             name = self.client.GetHeaderValue(1)  # 초
@@ -74,16 +59,14 @@ class CpEvent:
             item['diff'] = diff
             item['cur'] = cprice
             item['vol'] = vol
-
-            print('stockcur')
+ 
             # 현재가 업데이트
             self.caller.updateJangoCurPBData(item)
- 
         # 실시간 처리 - 주문체결
         elif self.name == 'conclution':
             # 주문 체결 실시간 업데이트
             conc = {}
-            print('************************************************')
+ 
             # 체결 플래그
             conc['체결플래그'] = self.dicflag14[self.client.GetHeaderValue(14)]
  
@@ -121,13 +104,41 @@ class CpEvent:
             conc['장부가'] = self.client.GetHeaderValue(21)
             conc['매도가능수량'] = self.client.GetHeaderValue(22)
  
-            print('conclution')
             print(conc)
             self.caller.updateJangoCont(conc)
  
             return
- 
- 
+        # item = {}
+        # codes = {}
+        # code = self.client.GetHeaderValue(0)  # 초
+        # name = self.client.GetHeaderValue(1)  # 초
+        # timess = self.client.GetHeaderValue(18)  # 초
+        # exFlag = self.client.GetHeaderValue(19)  # 예상체결 플래그
+        # cprice = self.client.GetHeaderValue(13)  # 현재가
+        # diff = self.client.GetHeaderValue(2)  # 대비
+        # cVol = self.client.GetHeaderValue(17)  # 순간체결수량
+        # vol = self.client.GetHeaderValue(9)  # 거래량
+        # item['현재가'] = cprice
+        # item['종목코드'] = code
+        # codes[code] = item
+        # objTrade = CpTrade()
+        # #and self.caller.isSell is False
+        # if(len(self.caller.jangoData) !=0):
+        #     print('*************** 매도: ',self.caller.jangoData[code]['종목명'],'  장부가: ',self.caller.jangoData[code]['장부가'],'   currentPrice:',cprice)
+        #     if(self.caller.jangoData[code]['장부가']* 1.03 < cprice):
+        #         # 현재가랑 종목 코드 필요
+        #         # 3% 올랐을때 매도
+        #         objTrade.Request(codes,"1")
+        #     if(self.caller.jangoData[code]['장부가']* 0.97 > cprice):
+        #         # 현재가랑 종목 코드 필요
+        #         # 3% 떨어졌을때 매도 
+        #         # 내일 다시 수정 필요!
+        #         objTrade.Request(codes,"1")
+        # #    self.caller.isSell = True            
+        # if (exFlag == ord('1')):  # 동시호가 시간 (예상체결)
+        #     print("실시간(예상체결)", name, timess, "*", cprice, "대비", diff, "체결량", cVol, "거래량", vol)
+        # elif (exFlag == ord('2')):  # 장중(체결)
+        #     print("실시간(장중 체결)", name, timess, cprice, "대비", diff, "체결량", cVol, "거래량", vol)
 ################################################
 # plus 실시간 수신 base 클래스
 class CpPublish:
@@ -152,32 +163,57 @@ class CpPublish:
         if self.bIsSB:
             self.obj.Unsubscribe()
         self.bIsSB = False
+# CpStockCur: 실시간 현재가 요청 클래스
+class CpStockCur:
+    def Subscribe(self, code,caller):
+        self.objStockCur = win32com.client.Dispatch("DsCbo1.StockCur")
+        handler = win32com.client.WithEvents(self.objStockCur, CpEvent)
+        self.objStockCur.SetInputValue(0, code)
+        handler.set_params(self.objStockCur,caller)
+        self.objStockCur.Subscribe()
  
-################################################
-# CpPBStockCur: 실시간 현재가 요청 클래스
-class CpPBStockCur(CpPublish):
-    def __init__(self):
-        super().__init__('stockcur', 'DsCbo1.StockCur')
+    def Unsubscribe(self):
+        self.objStockCur.Unsubscribe()
  
  
-################################################
-# CpPBConclusion: 실시간 주문 체결 수신 클래그
-class CpPBConclusion(CpPublish):
-    def __init__(self):
-        super().__init__('conclution', 'DsCbo1.CpConclusion')
- 
-################################################
+class CpTrade:
+    def Request(self, codes,flag):
+        # 주문 관련 초기화
+        if (objCpTrade.TradeInit(0) != 0):
+            print("주문 초기화 실패")
+            return False
+        # 계좌번호 조회
+        acc = objCpTrade.AccountNumber[0]  # 계좌번호
+        accFlag = objCpTrade.GoodsList(acc, 1)  # 주식상품 구분
+        print(acc, accFlag[0])
+
+        objStockOrder = win32com.client.Dispatch("CpTrade.CpTd0311")
+        ##당일 상위 종목 50개 받아와서 매수
+        ## 현재가가 5만원 이하이때만 현재가로 10주 매수        
+        for i in codes:
+            print('띠용: ',i,' ',codes[i],' ',codes[i]['현재가'])
+            #if(codes[i]['현재가'] < 50000):
+            objStockOrder.SetInputValue(0, flag)   # 2: 매수
+            objStockOrder.SetInputValue(1, acc )   #  계좌번호
+            objStockOrder.SetInputValue(2, accFlag[0])   # 상품구분 - 주식 상품 중 첫번째
+            objStockOrder.SetInputValue(3, i)   # 종목코드 - A003540 - 대신증권 종목
+            objStockOrder.SetInputValue(4, 10)   # 매수수량 10주
+            objStockOrder.SetInputValue(5, codes[i]['현재가'] )   # 주문단가  - 14,100원
+            objStockOrder.SetInputValue(7, "0")   # 주문 조건 구분 코드, 0: 기본 1: IOC 2:FOK
+            objStockOrder.SetInputValue(8, "01")   # 주문호가 구분코드 - 01: 보통
+            objStockOrder.BlockRequest()
 # Cp6033 : 주식 잔고 조회
 class Cp6033:
     def __init__(self):
-        acc = g_objCpTrade.AccountNumber[0]  # 계좌번호
-        accFlag = g_objCpTrade.GoodsList(acc, 1)  # 주식상품 구분
+        objCpTrade.TradeInit()
+        acc = objCpTrade.AccountNumber[0]  # 계좌번호
+        accFlag = objCpTrade.GoodsList(acc, 1)  # 주식상품 구분
         print(acc, accFlag[0])
  
-        self.objRq = win32com.client.Dispatch("CpTrade.CpTd6033")
+        self.objRq = win32com.client.Dispatch(" ")
         self.objRq.SetInputValue(0, acc)  # 계좌번호
         self.objRq.SetInputValue(1, accFlag[0])  # 상품구분 - 주식 상품 중 첫번째
-        self.objRq.SetInputValue(2, 50)  # 요청 건수(최대 50)
+        self.objRq.SetInputValue(2, 10)  # 요청 건수(최대 50)
         self.dicflag1 = {ord(' '): '현금',
                          ord('Y'): '융자',
                          ord('D'): '대주',
@@ -189,33 +225,32 @@ class Cp6033:
  
  
     # 실제적인 6033 통신 처리
-    def requestJango(self, caller):
+    def requestJango(self,caller):
+        
         while True:
             self.objRq.BlockRequest()
             # 통신 및 통신 에러 처리
             rqStatus = self.objRq.GetDibStatus()
             rqRet = self.objRq.GetDibMsg1()
-            print("통신상태", rqStatus, rqRet)
+            print("Cp6033 통신상태", rqStatus, rqRet)
             if rqStatus != 0:
                 return False
  
             cnt = self.objRq.GetHeaderValue(7)
-            print(cnt)
- 
- 
+            money = self.objRq.GetHeaderValue(8)
             for i in range(cnt):
                 item = {}
                 code = self.objRq.GetDataValue(12, i)  # 종목코드
                 item['종목코드'] = code
                 item['종목명'] = self.objRq.GetDataValue(0, i)  # 종목명
-                item['현금신용'] = self.dicflag1[self.objRq.GetDataValue(1,i)] # 신용구분
-                print(code, '현금신용', item['현금신용'])
+                # item['현금신용'] = self.dicflag1[self.objRq.GetDataValue(1,i)] # 신용구분
+                # print(code, '현금신용', item['현금신용'])
                 item['대출일'] = self.objRq.GetDataValue(2, i)  # 대출일
                 item['잔고수량'] = self.objRq.GetDataValue(7, i)  # 체결잔고수량
                 item['매도가능'] = self.objRq.GetDataValue(15, i)
                 item['장부가'] = self.objRq.GetDataValue(17, i)  # 체결장부단가
-                #item['평가금액'] = self.objRq.GetDataValue(9, i)  # 평가금액(천원미만은 절사 됨)
-                #item['평가손익'] = self.objRq.GetDataValue(11, i)  # 평가손익(천원미만은 절사 됨)
+                item['평가금액'] = self.objRq.GetDataValue(9, i)  # 평가금액(천원미만은 절사 됨)
+                item['평가손익'] = self.objRq.GetDataValue(11, i)  # 평가손익(천원미만은 절사 됨)
                 # 매입금액 = 장부가 * 잔고수량
                 item['매입금액'] = item['장부가'] * item['잔고수량']
                 item['현재가'] = 0
@@ -226,17 +261,23 @@ class Cp6033:
 #                key = (code, item['현금신용'],item['대출일'] )
                 key = code
                 caller.jangoData[key] = item
- 
-                if len(caller.jangoData) >= 200:  # 최대 200 종목만,
+                caller.codes.append(code)
+                print('값: ',item)
+                if len(caller.jangoData) >= 10:  # 최대 200 종목만,
                     break
  
-            if len(caller.jangoData) >= 200:
+            if len(caller.jangoData) >= 10:
                 break
             if (self.objRq.Continue == False):
                 break
         return True
- 
-################################################
+# CpPBStockCur: 실시간 현재가 요청 클래스
+class CpPBStockCur(CpPublish):
+    def __init__(self):
+        super().__init__('stockcur', 'DsCbo1.StockCur')
+class CpPBConclusion(CpPublish):
+    def __init__(self):
+        super().__init__('conclution', 'DsCbo1.CpConclusion')
 # 현재가 - 한종목 통신
 class CpRPCurrentPrice:
     def __init__(self):
@@ -273,7 +314,6 @@ class CpRPCurrentPrice:
  
  
         return True
- 
  
 ################################################
 # CpMarketEye : 복수종목 현재가 통신 서비스
@@ -312,72 +352,56 @@ class CpMarketEye:
             caller.curDatas[item['code']] =item
  
         return True
- 
- 
-################################################
-# 테스트를 위한 메인 화면
 class MyWindow(QMainWindow):
+ 
     def __init__(self):
         super().__init__()
- 
+
         # plus 상태 체크
         if InitPlusCheck() == False:
             exit()
- 
-        self.setWindowTitle("주식 잔고(실시간) 처리 예제")
+         
+        self.setWindowTitle("PLUS API TEST")
         self.setGeometry(300, 300, 300, 180)
- 
-        # 6033 잔고 object
-        self.obj6033 = Cp6033()
-        self.jangoData = {}
- 
         self.isSB = False
-        self.objCur = {}
- 
+        self.isSell = False
+        self.objCur = []
+        self.jangoData = {} # 잔고 object
+        self.codes = []
         # 현재가 정보
         self.curDatas = {}
         self.objRPCur = CpRPCurrentPrice()
- 
-        # 실시간 주문 체결
         self.objConclusion = CpPBConclusion()
+        btnStart = QPushButton("요청 시작", self)
+        btnStart.move(20, 20)
+        btnStart.clicked.connect(self.btnStart_clicked)
  
+        btnStop = QPushButton("요청 종료", self)
+        btnStop.move(20, 70)
+        btnStop.clicked.connect(self.btnStop_clicked)
  
-        nH = 20
-        btnExcel = QPushButton('Excel 내보내기', self)
-        btnExcel.move(20, nH)
-        btnExcel.clicked.connect(self.btnExcel_clicked)
-        nH += 50
- 
-        btnPrint = QPushButton('잔고 Print', self)
-        btnPrint.move(20, nH)
-        btnPrint.clicked.connect(self.btnPrint_clicked)
-        nH += 50
- 
-        btnExit = QPushButton('종료', self)
-        btnExit.move(20, nH)
+        btnExit = QPushButton("종료", self)
+        btnExit.move(20, 120)
         btnExit.clicked.connect(self.btnExit_clicked)
-        nH += 50
- 
-        # 잔고 요청
-        self.requestJango()
- 
- 
+
+        
     def StopSubscribe(self):
         if self.isSB:
-            for key, obj in self.objCur.items() :
-                obj.Unsubscribe()
-            self.objCur = {}
- 
+            cnt = len(self.objCur)
+            for i in range(cnt):
+                self.objCur[i].Unsubscribe()
+            print(cnt, "종목 실시간 해지되었음")
         self.isSB = False
-        self.objConclusion.Unsubscribe()
  
+        self.objCur = []
     def requestJango(self):
         self.StopSubscribe()
- 
-        # 주식 잔고 통신
+        codeItem = {}
+        self.obj6033 = Cp6033()
         if self.obj6033.requestJango(self) == False:
             return
- 
+        print('잔고: ',self.codes)
+
         # 잔고 현재가 통신
         codes = set()
         for code, value in self.jangoData.items():
@@ -387,41 +411,53 @@ class MyWindow(QMainWindow):
         codelist = list(codes)
         if (objMarkeyeye.Request(codelist, self) == False):
             exit()
- 
+        print('아아아: ',codelist)
         # 실시간 현재가  요청
         cnt = len(codelist)
-        print('아아아',codelist)
         for i in range(cnt):
             code = codelist[i]
-            print('code:',code)
             self.objCur[code] = CpPBStockCur()
             self.objCur[code].Subscribe(code, self)
         self.isSB = True
  
         # 실시간 주문 체결 요청
         self.objConclusion.Subscribe('', self)
+    def btnStart_clicked(self):
+        #잔고요청
+        self.requestJango()
+        # self.StopSubscribe()
+        # codeItem = {}
+        # self.obj6033 = Cp6033()
+        # if self.obj6033.requestJango(self) == False:
+        #     return
+        # print('잔고: ',self.codes)
+        # self.isSB = True
+        # objTrade = CpTrade()
+        # # if(len(self.caller.jangoData) !=0):
+        # #     print('*************** 매도: ',self.caller.jangoData[code]['종목명'],'  잔고금액: ',self.caller.jangoData[code]['장부가'],'   currentPrice:',cprice)
+        # #     cnt = len(self.codes)
+        # #     for i in range(cnt):
+        # #         if(jangoData[code]['장부가']* 1.03 < cprice):
+        # #             # 현재가랑 종목 코드 필요
+        # #             # 3% 올랐을때 매도
+        # #             objTrade.Request(codes,"1")
+        # #         if(jangoData[code]['장부가']* 0.97 > cprice):
+        # #             # 현재가랑 종목 코드 필요
+        # #             # 3% 떨어졌을때 매도 
+        # #             # 내일 다시 수정 필요!
+        # #             objTrade.Request(codes,"1")
+        # cnt = len(self.codes)
+        # for i in range(cnt):
+        #     self.objCur.append(CpStockCur())
+        #     self.objCur[i].Subscribe(self.codes[i],self)
+    def btnStop_clicked(self):
+        self.StopSubscribe()
  
-    def btnExcel_clicked(self):
-        return
- 
-    def btnPrint_clicked(self):
-        print('잔고')
-        for code, value in self.jangoData.items():
-            print(code, value)
- 
-        print('실시간 현재가 수신 중인 종목')
-        for key, obj in self.objCur.items():
-            print(key)
- 
-        return
  
     def btnExit_clicked(self):
         self.StopSubscribe()
         exit()
-        return
- 
- 
-    # 실시간 주문 체결 처리 로직
+     # 실시간 주문 체결 처리 로직
     def updateJangoCont(self, pbCont):
         # 주문 체결에서 들어온 신용 구분 값 ==> 잔고 구분값으로 치환
         dicBorrow = {
@@ -495,7 +531,7 @@ class MyWindow(QMainWindow):
                     del self.jangoData[code]
                     self.objCur[code].Unsubscribe()
                     del self.objCur[code]
-        print('self.jangoData: ',self.jangoData)
+ 
         return
  
     # 실시간 현재가 처리 로직
@@ -511,7 +547,6 @@ class MyWindow(QMainWindow):
         item['현재가'] = curData['cur']
         item['대비'] = curData['diff']
         item['거래량'] = curData['vol']
-        print('upjangoCurData:',item)
  
 if __name__ == "__main__":
     app = QApplication(sys.argv)
