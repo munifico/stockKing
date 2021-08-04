@@ -1,0 +1,16 @@
+<html>
+  <head>
+    <title>Blog List</title>
+  </head>
+  <body>
+    <h1>게시판 페이지입니다</h1>
+    <table>
+      {% for list in postlist %}
+      <ul>
+        <li>{{list.postname}}</li>
+        <li>{{list.contents}}</li>
+      </ul>
+      {% endfor %}
+    </table>
+  </body>
+</html>
