@@ -10,6 +10,10 @@
         <li>{{list.postname}}</li>
         <li>{{list.contents}}</li>
       </ul>
+      <!-- 게시글 클릭시 세부페이지로 넘어갑니다-->
+      <ul>
+        <li><a href="{{list.pk}}/">{{list.postname}}</a></li>
+      </ul>
       {% endfor %}
     </table>
   </body>
